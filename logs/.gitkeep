@@ -1,0 +1,2 @@
+# This directory stores PHP error logs.
+# Never commit actual .log files — add *.log to .gitignore.
