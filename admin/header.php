@@ -215,12 +215,6 @@ window.APP_CONFIG = {
             All Patients
         </a>
 
-        <a href="<?= BASE_URL ?>/admin/payments.php"
-           class="sidebar-link <?= $activePage === 'payments' ? 'active' : '' ?>">
-            <span class="sidebar-icon"><i class="fa-solid fa-money-bill-wave"></i></span>
-            Payments
-        </a>
-
         <!-- ACCOUNT -->
         <div class="sidebar-section-header mt-2">Account</div>
 
