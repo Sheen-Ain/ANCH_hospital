@@ -42,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'generateToken':  generateToken();  break;
         case 'updatePatient':  updatePatient();  break;
         case 'updatePayment':  updatePayment();  break;
+        case 'markReturned':   markReturned();   break;
         case 'deletePatient':  deletePatient();  break;
         default: jsonResponse(false, 'Unknown POST action.');
     }
@@ -178,9 +179,9 @@ function getPatientById(): void
  */
 function getTodayPatients(): void
 {
-    $today         = date('Y-m-d');
-    $doctorId      = (int) ($_GET['doctor_id']      ?? 0);
-    $paymentStatus = trim($_GET['payment_status']   ?? '');
+    $today        = date('Y-m-d');
+    $doctorId     = (int) ($_GET['doctor_id']     ?? 0);
+    $statusFilter = trim( $_GET['status_filter']  ?? '');
 
     $where  = ["p.visit_date = ?"];
     $params = [$today];
@@ -190,9 +191,12 @@ function getTodayPatients(): void
         $params[] = $doctorId;
     }
 
-    if (in_array($paymentStatus, ['paid', 'unpaid'], true)) {
-        $where[]  = "py.status = ?";
-        $params[] = $paymentStatus;
+    // status_filter: 'paid' | 'unpaid' | 'returned'
+    if ($statusFilter === 'returned') {
+        $where[] = "p.notes LIKE '[RETURNED]%'";
+    } elseif (in_array($statusFilter, ['paid', 'unpaid'], true)) {
+        $where[] = "py.status = ? AND (p.notes IS NULL OR p.notes NOT LIKE '[RETURNED]%')";
+        $params[] = $statusFilter;
     }
 
     $whereSql = 'WHERE ' . implode(' AND ', $where);
@@ -200,7 +204,7 @@ function getTodayPatients(): void
     $patients = Database::fetchAll(
         "SELECT
              p.id, p.name, p.age, p.phone, p.gender, p.address, p.notes,
-             p.visit_time, p.serial_number, p.receptionist_id,
+             p.visit_date, p.visit_time, p.serial_number, p.receptionist_id, p.doctor_id,
              t.token_number,
              d.name        AS doctor_name,
              d.specialization,
@@ -223,18 +227,33 @@ function getTodayPatients(): void
         $p['visit_time_fmt'] = formatTime($p['visit_time']);
         $p['amount_fmt']     = formatCurrency((float)($p['amount'] ?? 0));
         $p['is_mine']        = (int)$p['receptionist_id'] === $currentUserId;
+        $p['visit_status']   = str_starts_with($p['notes'] ?? '', '[RETURNED]') ? 'returned' : 'active';
     }
     unset($p);
 
-    $summary = [
-        'total'  => count($patients),
-        'paid'   => count(array_filter($patients, fn($p) => $p['payment_status'] === 'paid')),
-        'unpaid' => count(array_filter($patients, fn($p) => $p['payment_status'] === 'unpaid')),
-    ];
+    // ── Stats (scoped to same doctor filter, NOT status filter — always show all stats) ──
+    $statsWhere  = ["p.visit_date = ?"];
+    $statsParams = [$today];
+    if ($doctorId > 0) { $statsWhere[] = "p.doctor_id = ?"; $statsParams[] = $doctorId; }
+    $statsBase = "FROM patients p LEFT JOIN payments py ON py.patient_id = p.id WHERE " . implode(' AND ', $statsWhere);
+
+    $statsPaid     = (int)   Database::fetchOne("SELECT COUNT(*) AS c {$statsBase} AND py.status='paid' AND (p.notes IS NULL OR p.notes NOT LIKE '[RETURNED]%')", $statsParams)['c'];
+    $statsUnpaid   = (int)   Database::fetchOne("SELECT COUNT(*) AS c {$statsBase} AND py.status='unpaid' AND (p.notes IS NULL OR p.notes NOT LIKE '[RETURNED]%')", $statsParams)['c'];
+    $statsReturned = (int)   Database::fetchOne("SELECT COUNT(*) AS c {$statsBase} AND p.notes LIKE '[RETURNED]%'", $statsParams)['c'];
+    $statsRevenue  = (float) Database::fetchOne("SELECT COALESCE(SUM(py.amount),0) AS t {$statsBase} AND py.status='paid'", $statsParams)['t'];
+    $statsPending  = (float) Database::fetchOne("SELECT COALESCE(SUM(py.amount),0) AS t {$statsBase} AND py.status='unpaid' AND (p.notes IS NULL OR p.notes NOT LIKE '[RETURNED]%')", $statsParams)['t'];
+    $statsTotal    = $statsPaid + $statsUnpaid + $statsReturned;
 
     jsonResponse(true, count($patients) . ' patient(s).', [
         'patients' => $patients,
-        'summary'  => $summary,
+        'stats'    => [
+            'total'    => $statsTotal,
+            'paid'     => $statsPaid,
+            'unpaid'   => $statsUnpaid,
+            'returned' => $statsReturned,
+            'revenue'  => formatCurrency($statsRevenue),
+            'pending'  => formatCurrency($statsPending),
+        ],
     ]);
 }
 
@@ -529,6 +548,49 @@ function updatePayment(): void
         'payment_status' => $paymentStatus,
         'payment_method' => $paymentMethod ?: null,
     ]);
+}
+
+/**
+ * markReturned
+ * Toggle a patient's returned/active visit status.
+ * Only the registering receptionist may mark their own patients.
+ * POST fields: patient_id*, mark_action ('return' | 'activate')
+ */
+function markReturned(): void
+{
+    $patientId  = (int)  ($_POST['patient_id']  ?? 0);
+    $markAction = trim(  $_POST['mark_action']  ?? 'return');
+
+    if ($patientId <= 0) jsonResponse(false, 'Invalid patient ID.');
+
+    $patient = Database::fetchOne(
+        "SELECT id, name, notes, receptionist_id FROM patients WHERE id = ?",
+        [$patientId]
+    );
+    if (!$patient) jsonResponse(false, 'Patient not found.');
+
+    // Only the registering receptionist (or admin) may mark returned
+    if ((int)$patient['receptionist_id'] !== getCurrentUserId() && !isAdmin()) {
+        jsonResponse(false, 'You can only update patients you registered.');
+    }
+
+    if ($markAction === 'return') {
+        if (!str_starts_with($patient['notes'] ?? '', '[RETURNED]')) {
+            $newNotes = '[RETURNED]' . ($patient['notes'] ?? '');
+            Database::execute("UPDATE patients SET notes = ? WHERE id = ?", [$newNotes, $patientId]);
+        }
+        Database::execute(
+            "UPDATE payments SET status='unpaid', payment_method=NULL WHERE patient_id=?",
+            [$patientId]
+        );
+        logActivity(getCurrentUserId(), 'patient_returned', ['id' => $patientId, 'name' => $patient['name']]);
+        jsonResponse(true, "{$patient['name']} marked as Returned.", ['visit_status' => 'returned']);
+    } else {
+        $cleanNotes = ltrim(str_replace('[RETURNED]', '', $patient['notes'] ?? ''));
+        Database::execute("UPDATE patients SET notes = ? WHERE id = ?", [$cleanNotes ?: null, $patientId]);
+        logActivity(getCurrentUserId(), 'patient_activated', ['id' => $patientId, 'name' => $patient['name']]);
+        jsonResponse(true, "{$patient['name']} reverted to Active.", ['visit_status' => 'active']);
+    }
 }
 
 /**

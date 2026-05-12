@@ -201,11 +201,11 @@ window.APP_CONFIG = {
         <!-- TOKENS -->
         <div class="sidebar-section-header mt-2">Tokens</div>
 
-        <a href="<?= BASE_URL ?>/receptionist/generate-token.php"
+        <!-- <a href="<?= BASE_URL ?>/receptionist/generate-token.php"
            class="sidebar-link <?= $activePage === 'generate-token' ? 'active' : '' ?>">
             <span class="sidebar-icon"><i class="fa-solid fa-ticket"></i></span>
             Generate Token
-        </a>
+        </a> -->
 
         <a href="<?= BASE_URL ?>/receptionist/patients.php"
            class="sidebar-link <?= $activePage === 'patients' ? 'active' : '' ?>">

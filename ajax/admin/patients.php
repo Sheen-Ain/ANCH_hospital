@@ -1,4 +1,5 @@
 <?php
+
 /**
  * ajax/admin/patients.php
  * Admin-only patient record browser — all dates, all receptionists.
@@ -26,24 +27,46 @@ $action = trim($_POST['action'] ?? $_GET['action'] ?? '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     switch ($action) {
-        case 'getPatients':       getPatients();       break;
-        case 'getPatientById':    getPatientById();    break;
-        case 'getPatientForEdit': getPatientForEdit(); break;
-        case 'getDoctors':        getDoctors();        break;
-        case 'getNextToken':      getNextToken();      break;
-        default: jsonResponse(false, 'Unknown GET action.');
+        case 'getPatients':
+            getPatients();
+            break;
+        case 'getPatientById':
+            getPatientById();
+            break;
+        case 'getPatientForEdit':
+            getPatientForEdit();
+            break;
+        case 'getDoctors':
+            getDoctors();
+            break;
+        case 'getNextToken':
+            getNextToken();
+            break;
+        default:
+            jsonResponse(false, 'Unknown GET action.');
     }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validateCsrf(true);
     switch ($action) {
-        case 'generateToken': generateToken(); break;
-        case 'updatePatient': updatePatient(); break;
-        case 'updatePayment': updatePayment(); break;
-        case 'markReturned':  markReturned();  break;
-        case 'deletePatient': deletePatient(); break;
-        default: jsonResponse(false, 'Unknown POST action.');
+        case 'generateToken':
+            generateToken();
+            break;
+        case 'updatePatient':
+            updatePatient();
+            break;
+        case 'updatePayment':
+            updatePayment();
+            break;
+        case 'markReturned':
+            markReturned();
+            break;
+        case 'deletePatient':
+            deletePatient();
+            break;
+        default:
+            jsonResponse(false, 'Unknown POST action.');
     }
 }
 
@@ -70,9 +93,18 @@ function getPatients(): void
         $where[] = "(p.name LIKE ? OR p.phone LIKE ? OR d.name LIKE ?)";
         array_push($params, $like, $like, $like);
     }
-    if ($dateFrom !== '') { $where[] = "p.visit_date >= ?"; $params[] = $dateFrom; }
-    if ($dateTo   !== '') { $where[] = "p.visit_date <= ?"; $params[] = $dateTo;   }
-    if ($doctorId  > 0)  { $where[] = "p.doctor_id = ?";   $params[] = $doctorId; }
+    if ($dateFrom !== '') {
+        $where[] = "p.visit_date >= ?";
+        $params[] = $dateFrom;
+    }
+    if ($dateTo   !== '') {
+        $where[] = "p.visit_date <= ?";
+        $params[] = $dateTo;
+    }
+    if ($doctorId  > 0) {
+        $where[] = "p.doctor_id = ?";
+        $params[] = $doctorId;
+    }
 
     if ($statusFilter === 'returned') {
         $where[] = "p.notes LIKE '[RETURNED]%'";
@@ -120,12 +152,51 @@ function getPatients(): void
     }
     unset($r);
 
+    // ── Stats scoped to the same filters ──
+    // Build a safe connector: if we already have WHERE conditions, append AND;
+    // otherwise start fresh with WHERE so extra conditions are always valid SQL.
+    $statsJoins = "FROM patients p JOIN doctors d ON d.id=p.doctor_id LEFT JOIN payments py ON py.patient_id=p.id";
+    $statsConn  = $where ? ('WHERE ' . implode(' AND ', $where) . ' AND') : 'WHERE';
+
+    $statsPaid = (int) Database::fetchOne(
+        "SELECT COUNT(*) AS cnt {$statsJoins} {$statsConn} py.status='paid' AND (p.notes IS NULL OR p.notes NOT LIKE '[RETURNED]%')",
+        $params
+    )['cnt'];
+
+    $statsUnpaid = (int) Database::fetchOne(
+        "SELECT COUNT(*) AS cnt {$statsJoins} {$statsConn} py.status='unpaid' AND (p.notes IS NULL OR p.notes NOT LIKE '[RETURNED]%')",
+        $params
+    )['cnt'];
+
+    $statsReturned = (int) Database::fetchOne(
+        "SELECT COUNT(*) AS cnt {$statsJoins} {$statsConn} p.notes LIKE '[RETURNED]%'",
+        $params
+    )['cnt'];
+
+    $statsRevenue = (float) Database::fetchOne(
+        "SELECT COALESCE(SUM(py.amount),0) AS total {$statsJoins} {$statsConn} py.status='paid'",
+        $params
+    )['total'];
+
+    $statsPending = (float) Database::fetchOne(
+        "SELECT COALESCE(SUM(py.amount),0) AS total {$statsJoins} {$statsConn} py.status='unpaid' AND (p.notes IS NULL OR p.notes NOT LIKE '[RETURNED]%')",
+        $params
+    )['total'];
+
     jsonResponse(true, "{$total} patient(s) found.", [
         'patients'    => $rows,
         'total'       => $total,
         'page'        => $page,
         'per_page'    => $perPage,
         'total_pages' => (int) ceil($total / $perPage),
+        'stats' => [
+            'total'          => $total,
+            'paid'           => $statsPaid,
+            'unpaid'         => $statsUnpaid,
+            'returned'       => $statsReturned,
+            'revenue'        => formatCurrency($statsRevenue),
+            'pending'        => formatCurrency($statsPending),
+        ],
     ]);
 }
 
@@ -204,15 +275,15 @@ function updatePatient(): void
 {
     $id            = (int)  ($_POST['id']            ?? 0);
     $doctorId      = (int)  ($_POST['doctor_id']     ?? 0);
-    $name          = trim(  $_POST['name']           ?? '');
-    $gender        = trim(  $_POST['gender']         ?? '');
-    $visitDatetime = trim(  $_POST['visit_datetime'] ?? '');
-    $age           = trim(  $_POST['age']            ?? '');
-    $phone         = trim(  $_POST['phone']          ?? '');
-    $address       = trim(  $_POST['address']        ?? '');
-    $notes         = trim(  $_POST['notes']          ?? '');
-    $paymentStatus = trim(  $_POST['payment_status'] ?? '');
-    $paymentMethod = trim(  $_POST['payment_method'] ?? '');
+    $name          = trim($_POST['name']           ?? '');
+    $gender        = trim($_POST['gender']         ?? '');
+    $visitDatetime = trim($_POST['visit_datetime'] ?? '');
+    $age           = trim($_POST['age']            ?? '');
+    $phone         = trim($_POST['phone']          ?? '');
+    $address       = trim($_POST['address']        ?? '');
+    $notes         = trim($_POST['notes']          ?? '');
+    $paymentStatus = trim($_POST['payment_status'] ?? '');
+    $paymentMethod = trim($_POST['payment_method'] ?? '');
 
     if ($id <= 0)       jsonResponse(false, 'Invalid patient ID.');
     if (empty($name))   jsonResponse(false, 'Patient name is required.');
@@ -245,12 +316,14 @@ function updatePatient(): void
     }
 
     $patient = Database::fetchOne(
-        "SELECT id, name, token_id, notes FROM patients WHERE id = ?", [$id]
+        "SELECT id, name, token_id, notes FROM patients WHERE id = ?",
+        [$id]
     );
     if (!$patient) jsonResponse(false, 'Patient not found.');
 
     $doctor = Database::fetchOne(
-        "SELECT id, name FROM doctors WHERE id = ? AND is_active = 1", [$doctorId]
+        "SELECT id, name FROM doctors WHERE id = ? AND is_active = 1",
+        [$doctorId]
     );
     if (!$doctor) jsonResponse(false, 'Selected doctor is not available.');
 
@@ -342,7 +415,7 @@ function getDoctors(): void
     foreach ($doctors as &$d) {
         $next              = ((int)($d['last_token'] ?? 0)) + 1;
         $d['next_token']   = $next;
-        $d['token_display']= $prefix . '-' . str_pad($next, 3, '0', STR_PAD_LEFT);
+        $d['token_display'] = $prefix . '-' . str_pad($next, 3, '0', STR_PAD_LEFT);
         $d['fee_fmt']      = formatCurrency((float) $d['fee']);
         $d['tokens_left']  = max(0, $maxTokens - (int) $d['date_patients']);
         $d['is_full']      = (int) $d['date_patients'] >= $maxTokens;
@@ -403,15 +476,15 @@ function generateToken(): void
 {
     $userId        = getCurrentUserId();
     $doctorId      = (int)  ($_POST['doctor_id']       ?? 0);
-    $name          = trim(  $_POST['name']             ?? '');
-    $gender        = trim(  $_POST['gender']           ?? '');
-    $visitDatetime = trim(  $_POST['visit_datetime']   ?? '');
-    $age           = trim(  $_POST['age']              ?? '');
-    $phone         = trim(  $_POST['phone']            ?? '');
-    $address       = trim(  $_POST['address']          ?? '');
-    $notes         = trim(  $_POST['notes']            ?? '');
-    $paymentStatus = trim(  $_POST['payment_status']   ?? 'unpaid');
-    $paymentMethod = trim(  $_POST['payment_method']   ?? '');
+    $name          = trim($_POST['name']             ?? '');
+    $gender        = trim($_POST['gender']           ?? '');
+    $visitDatetime = trim($_POST['visit_datetime']   ?? '');
+    $age           = trim($_POST['age']              ?? '');
+    $phone         = trim($_POST['phone']            ?? '');
+    $address       = trim($_POST['address']          ?? '');
+    $notes         = trim($_POST['notes']            ?? '');
+    $paymentStatus = trim($_POST['payment_status']   ?? 'unpaid');
+    $paymentMethod = trim($_POST['payment_method']   ?? '');
 
     if ($doctorId <= 0) jsonResponse(false, 'Please select a doctor.');
     if (empty($name))   jsonResponse(false, 'Patient name is required.');
@@ -474,10 +547,18 @@ function generateToken(): void
                  address, doctor_id, receptionist_id, visit_date, visit_time, notes)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                $tokenId, $nextToken, $name,
+                $tokenId,
+                $nextToken,
+                $name,
                 $age !== '' ? (int)$age : null,
-                $phone ?: null, $gender, $address ?: null,
-                $doctorId, $userId, $visitDate, $visitTime, $notes ?: null,
+                $phone ?: null,
+                $gender,
+                $address ?: null,
+                $doctorId,
+                $userId,
+                $visitDate,
+                $visitTime,
+                $notes ?: null,
             ]
         );
         Database::insert(
@@ -513,8 +594,8 @@ function generateToken(): void
 function updatePayment(): void
 {
     $patientId = (int)  ($_POST['patient_id']    ?? 0);
-    $status    = trim(  $_POST['payment_status'] ?? '');
-    $method    = trim(  $_POST['payment_method'] ?? '');
+    $status    = trim($_POST['payment_status'] ?? '');
+    $method    = trim($_POST['payment_method'] ?? '');
 
     if ($patientId <= 0) jsonResponse(false, 'Invalid patient ID.');
     if (!in_array($status, ['paid', 'unpaid'], true)) jsonResponse(false, 'Invalid payment status.');
@@ -558,7 +639,7 @@ function updatePayment(): void
 function markReturned(): void
 {
     $patientId  = (int)  ($_POST['patient_id']  ?? 0);
-    $markAction = trim(  $_POST['mark_action']  ?? 'return');
+    $markAction = trim($_POST['mark_action']  ?? 'return');
 
     if ($patientId <= 0) jsonResponse(false, 'Invalid patient ID.');
 

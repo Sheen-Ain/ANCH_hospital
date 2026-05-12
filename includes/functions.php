@@ -29,6 +29,9 @@ function bootApp(): void
     session_start();
   }
 
+  // Set timezone to Karachi (PKT, UTC+5)
+  date_default_timezone_set('Asia/Karachi');
+
   // Load settings into global $SETTINGS
   require_once BASE_PATH . '/includes/settings.php';
 
@@ -303,7 +306,6 @@ function generateReceiptNumber(): string
  * @param  int    $patientId
  * @return string HTML string
  */
-
 function renderReceiptHTML(int $patientId): string
 {
   $row = Database::fetchOne(
@@ -325,7 +327,7 @@ function renderReceiptHTML(int $patientId): string
   );
 
   if (!$row) {
-    return '<p style="color:#dc2626;">Patient record not found.</p>';
+    return '<p>Patient record not found.</p>';
   }
 
   $prefix       = getSetting('token_prefix', 'TKN');
@@ -335,34 +337,24 @@ function renderReceiptHTML(int $patientId): string
   $addressUrdu  = getSetting('hospital_address_urdu', '');
   $phone        = getSetting('contact_phone', '');
   $showUrdu     = getSetting('receipt_show_urdu', '1') === '1';
-  $currency     = getSetting('currency_symbol', 'Rs.');
   $logoFile     = getSetting('hospital_logo', '');
   $logoSrc      = $logoFile ? BASE_URL . '/assets/uploads/logo/' . e($logoFile) : '';
   $recName      = e($row['rec_first'] . ' ' . $row['rec_last']);
   $tokenDisplay = $prefix . '-' . str_pad($row['token_number'], 3, '0', STR_PAD_LEFT);
   $isPaid       = $row['payment_status'] === 'paid';
-  $receiptNum   = generateReceiptNumber();
   $printedAt    = date('d/m/Y h:i A');
+  $payStatus    = strtoupper($row['payment_status'] ?? 'UNPAID');
+  $feeAmount    = formatCurrency((float)($row['amount'] ?? 0));
+  $genderAge    = ucfirst(e($row['gender']))
+    . ($row['age'] ? ', Age: ' . (int)$row['age'] . ' yrs' : '');
 
-  // Urdu labels for gender and payment method
-  $genderUrdu = match ($row['gender']) {
-    'male'   => 'مرد',
-    'female' => 'عورت',
-    default  => 'دیگر',
-  };
   $methodUrduMap = [
     'cash'      => 'نقد',
     'card'      => 'کارڈ',
     'insurance' => 'انشورنس',
     'online'    => 'آن لائن',
   ];
-  $methodUrdu  = $methodUrduMap[$row['payment_method'] ?? ''] ?? '';
-  $paidUrdu    = $isPaid ? 'ادا شدہ' : 'ادا نہیں ہوا';
-
-  // Combined display strings
-  $doctorLine   = 'Dr. ' . e($row['doctor_name']) . ' (' . e($row['specialization']) . ')';
-  $dateTimeLine = formatDate($row['visit_date']) . ' ' . formatTime($row['visit_time']);
-  $feeAmount    = formatCurrency((float)($row['amount'] ?? 0));
+  $methodUrdu = $methodUrduMap[$row['payment_method'] ?? ''] ?? '';
 
   ob_start();
 ?>
@@ -371,460 +363,382 @@ function renderReceiptHTML(int $patientId): string
 
   <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=58mm">
+    <title>Receipt</title>
     <style>
-      /* ── Reset ── */
-      * {
+      /* ── Wrapper — centered on screen ── */
+      #rct-root {
+        display: block;
+        width: 75mm;
+        margin: 0 auto;
+        padding: 0;
+        background: #fff;
+      }
+
+      #rct-root #rct {
+        width: 75mm;
+        padding: 3mm 2.5mm;
+        background: #fff;
+        color: #000;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 11px;
+        font-weight: 700;
+        /* 🔥 global bold */
+        box-sizing: border-box;
+      }
+
+      /* ── Reset children ── */
+      #rct-root #rct * {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
+        font-weight: 700;
+        /* 🔥 force bold everywhere */
+        color: #000;
       }
 
-      body {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        font-size: 13px;
-        color: #1e293b;
-        background: #fff;
-      }
-
-      .receipt-wrapper {
-        max-width: 380px;
-        margin: 0 auto;
-        padding: 16px;
-        background: #fff;
-        color: #1e293b;
-      }
-
-      /* ── Header ── */
-      .receipt-header {
+      /* ── LOGO FIX (center properly) ── */
+      #rct-root .logo-wrap {
+        width: 100%;
         text-align: center;
-        border-bottom: 2px solid #0369a1;
-        padding-bottom: 10px;
-        margin-bottom: 12px;
-      }
-
-      .receipt-header .hospital-icon {
-        width: 44px;
-        height: 44px;
-        background: #e0f2fe;
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        /* 🔥 THIS is the real fix */
         margin-bottom: 6px;
       }
 
-      .receipt-header .hospital-icon i {
-        font-size: 20px;
-        color: #0369a1;
+      #rct-root .logo-img {
+        display: inline-block;
+        /* 🔥 important */
+        max-height: 44px;
+        max-width: 130px;
       }
 
-      .receipt-header h2 {
-        font-size: 15px;
-        font-weight: 700;
-        color: #0369a1;
-        margin: 4px 0 2px;
+      /* ── Separators ── */
+      #rct-root .sep-solid {
+        border-top: 1.5px solid #000;
+        margin: 5px 0;
       }
 
-      .receipt-header p {
-        font-size: 11px;
-        color: #64748b;
-        margin: 2px 0;
+      #rct-root .sep-dash {
+        border-top: 1.5px dashed #000;
+        margin: 5px 0;
       }
 
-      .receipt-header .phone-row i {
+      #rct-root .sep-double {
+        border-top: 3px double #000;
+        margin: 6px 0;
+      }
+
+      /* ── Section label ── */
+      #rct-root .sec-lbl {
         font-size: 10px;
-        margin-right: 3px;
-        color: #94a3b8;
-      }
-
-      /* ── Token box ── */
-      .token-box {
-        background: #e0f2fe;
-        border: 2px solid #0369a1;
-        border-radius: 10px;
-        text-align: center;
-        padding: 12px 8px;
-        margin-bottom: 12px;
-      }
-
-      .token-box .token-num {
-        font-size: 26px;
-        font-weight: 800;
-        color: #0369a1;
-        letter-spacing: 3px;
-        font-family: 'Courier New', monospace;
-      }
-
-      /* ── Info rows ── */
-      .receipt-divider {
-        border: none;
-        border-top: 1px solid #e2e8f0;
-        margin: 8px 0;
-      }
-
-      .receipt-section-title {
-        font-size: 10px;
-        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #94a3b8;
-        margin-bottom: 5px;
-        display: flex;
-        align-items: center;
-        gap: 5px;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+        text-align: left;
       }
 
-      .receipt-section-title i {
+      /* ── Header ── */
+      #rct-root .hosp-name {
+        text-align: center;
+        font-size: 15px;
+        margin-bottom: 2px;
+      }
+
+      #rct-root .hosp-sub {
+        text-align: center;
+        font-size: 11px;
+        margin: 1px 0;
+      }
+
+      /* ── Token ── */
+      #rct-root .token-box {
+        border: 2px solid #000;
+        text-align: center;
+        padding: 6px 3px;
+        margin: 6px 0;
+      }
+
+      #rct-root .token-box .t-label {
         font-size: 10px;
+        letter-spacing: 1px;
       }
 
-      .info-table {
+      #rct-root .token-box .t-num {
+        font-size: 30px;
+        letter-spacing: 4px;
+        line-height: 1.2;
+      }
+
+      #rct-root .token-box .t-serial {
+        font-size: 10px;
+        margin-top: 2px;
+      }
+
+      /* ── TABLE FIX (LEFT / RIGHT ALIGN CLEAN) ── */
+      #rct-root .info-tbl {
         width: 100%;
-        margin-bottom: 10px;
-        font-size: 12px;
         border-collapse: collapse;
+        margin-bottom: 4px;
       }
 
-      .info-table td {
+      #rct-root .info-tbl td {
         padding: 3px 0;
         vertical-align: top;
       }
 
-      .info-table .lbl {
-        color: #64748b;
-        width: 42%;
+      /* LEFT LABEL */
+      #rct-root .info-tbl .lbl {
+        width: 45%;
+        text-align: left;
         font-size: 11px;
-        white-space: nowrap;
       }
 
-      .info-table .lbl i {
-        font-size: 10px;
-        width: 12px;
-        margin-right: 3px;
-        color: #94a3b8;
-      }
-
-      .info-table .val {
-        color: #1e293b;
-        font-weight: 600;
-      }
-
-      /* ── Payment status inline badges ── */
-      .status-paid {
-        color: #059669;
-        font-weight: 700;
-      }
-
-      .status-unpaid {
-        color: #d97706;
-        font-weight: 700;
+      /* RIGHT VALUE */
+      #rct-root .info-tbl .val {
+        width: 55%;
+        text-align: right;
+        /* 🔥 IMPORTANT */
+        font-size: 11px;
+        word-break: break-word;
       }
 
       /* ── Notes ── */
-      .notes-box {
-        background: #f8fafc;
-        border-left: 3px solid #0369a1;
-        padding: 6px 8px;
+      #rct-root .notes-box {
+        border: 1px dashed #000;
+        padding: 5px;
         font-size: 11px;
-        color: #475569;
-        margin-bottom: 8px;
-        border-radius: 0 4px 4px 0;
+        margin: 4px 0;
       }
 
       /* ── Footer ── */
-      .receipt-footer {
-        border-top: 2px solid #e2e8f0;
-        margin-top: 10px;
-        padding-top: 8px;
+      #rct-root .rct-footer {
         font-size: 11px;
-        color: #94a3b8;
         text-align: center;
       }
 
-      .receipt-footer p {
+      #rct-root .rct-footer p {
         margin: 2px 0;
       }
 
-      /* ── Urdu section ── */
-      .urdu-section {
-        border-top: 3px double #0369a1;
-        margin-top: 14px;
-        padding-top: 12px;
+      /* ── Urdu ── */
+      #rct-root .urdu-wrap {
         direction: rtl;
         text-align: right;
         font-family: 'Noto Nastaliq Urdu', serif;
-        line-height: 2.2;
-      }
-
-      .urdu-section .urdu-title {
-        text-align: center;
-        font-weight: 700;
-        font-size: 16px;
-        margin-bottom: 8px;
-        color: #0369a1;
-      }
-
-      .urdu-section .urdu-hospital {
-        text-align: center;
-        font-size: 14px;
-        font-weight: 700;
-        color: #0369a1;
-        margin-bottom: 2px;
-      }
-
-      .urdu-section .urdu-address {
-        text-align: center;
-        font-size: 12px;
-        color: #64748b;
-        margin-bottom: 6px;
-      }
-
-      .urdu-section .urdu-table {
-        width: 100%;
         font-size: 13px;
+        line-height: 2;
+        margin-top: 5px;
+      }
+
+      #rct-root .urdu-wrap .u-hosp,
+      #rct-root .urdu-wrap .u-addr,
+      #rct-root .urdu-wrap .u-title {
+        text-align: center;
+      }
+
+      #rct-root .u-token-box {
+        border: 1.5px solid #000;
+        text-align: center;
+        padding: 4px;
+        margin: 4px 0;
+        direction: ltr;
+      }
+
+      #rct-root .u-token-box .ut-num {
+        font-size: 20px;
+        letter-spacing: 3px;
+      }
+
+      #rct-root .urdu-tbl {
+        width: 100%;
         border-collapse: collapse;
       }
 
-      .urdu-section .urdu-table td {
+      #rct-root .urdu-tbl td {
         padding: 2px 0;
-        vertical-align: top;
       }
 
-      .urdu-section .urdu-table .u-lbl {
-        color: #64748b;
-        font-size: 12px;
-        white-space: nowrap;
-        padding-left: 10px;
+      /* Urdu labels left, values right */
+      #rct-root .urdu-tbl .u-lbl {
+        width: 40%;
+        text-align: left;
+        padding-left: 6px;
       }
 
-      .urdu-section .urdu-table .u-val {
-        font-weight: 600;
-        color: #1e293b;
+      #rct-root .urdu-tbl .u-val {
+        width: 60%;
+        text-align: right;
       }
 
-      .urdu-token-box {
-        background: #e0f2fe;
-        border: 1.5px solid #0369a1;
-        border-radius: 8px;
-        text-align: center;
-        padding: 8px;
-        margin: 8px 0;
-      }
-
-      .urdu-token-box .u-token-num {
-        font-size: 20px;
-        font-weight: 800;
-        color: #0369a1;
-        font-family: 'Courier New', monospace;
-        letter-spacing: 2px;
-      }
-
-      .urdu-paid   { color: #059669; font-weight: 700; }
-      .urdu-unpaid { color: #d97706; font-weight: 700; }
-
-      /* ═══════════════════════════════════════════
-         PRINT STYLES — 58 mm thermal receipt
-         @page margin:0 removes the browser-injected
-         header (page title) and footer (URL) that
-         appear on every printed page by default.
-         Content padding is handled by the wrapper.
-         ═══════════════════════════════════════════ */
+      /* ── PRINT ── */
       @media print {
 
         @page {
-          size: 58mm auto;
-          margin: 0;          /* removes browser URL / title headers */
+          size: 75mm auto;
+          margin: 0;
         }
 
-        html,
-        body {
-          margin: 0 !important;
-          padding: 0 !important;
-          background: #fff !important;
-          width: 58mm !important;
-          /* Suppress any stray browser-generated content */
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-
-        /* Hide everything except the receipt root */
-        body > *:not(#receipt-print-root) {
+        body>*:not(#rct-root) {
           display: none !important;
         }
 
-        #receipt-print-root {
-          display: block !important;
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          width: 100% !important;
-          margin: 0 !important;
-          padding: 0 !important;
+        #rct-root {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 73mm;
+          margin: 0;
+          padding: 0;
         }
 
-        .receipt-wrapper {
-          max-width: 100% !important;
-          padding: 4px 3px !important;   /* small edge breathing room */
-          margin: 0 !important;
-        }
-
-        /* Guarantee background colours / borders print */
-        .notes-box,
-        .token-box,
-        .urdu-token-box {
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
+        #rct-root #rct {
+          width: 73mm;
+          padding: 2mm 1mm;
         }
       }
     </style>
   </head>
 
   <body>
-    <div id="receipt-print-root">
-      <div class="receipt-wrapper">
 
-        <!-- ── Header ── -->
-        <div class="receipt-header">
-          <?php if ($logoSrc): ?>
-            <div style="margin-bottom:6px;">
-              <img src="<?= $logoSrc ?>" alt="<?= e($hospitalName) ?>"
-                style="height:48px;max-width:130px;object-fit:contain;margin:0 auto;display:block;">
-            </div>
-          <?php else: ?>
-            <div class="hospital-icon">
-              <i class="fa-solid fa-hospital-user"></i>
-            </div>
-          <?php endif; ?>
-          <h2><?= e($hospitalName) ?></h2>
-          <?php if ($address): ?>
-            <p><i class="fa-solid fa-location-dot" style="color:#94a3b8;font-size:10px;"></i> <?= e($address) ?></p>
-          <?php endif; ?>
-          <?php if ($phone): ?>
-            <p class="phone-row"><i class="fa-solid fa-phone"></i> <?= e($phone) ?></p>
-          <?php endif; ?>
-        </div>
+    <div id="rct-root">
+      <div id="rct">
 
-        <!-- ── Token Box ── -->
-        <div class="token-box">
-          <div class="token-num"><?= e($tokenDisplay) ?></div>
-        </div>
-
-        <!-- ── Patient Info ── -->
-        <div class="receipt-section-title">
-          <i class="fa-solid fa-user"></i> Patient Information
-        </div>
-        <table class="info-table">
-          <tr>
-            <td class="lbl"><i class="fa-solid fa-user"></i> Patient</td>
-            <td class="val"><?= e($row['name']) ?></td>
-          </tr>
-          <tr>
-            <td class="lbl"><i class="fa-solid fa-venus-mars"></i> Gender</td>
-            <td class="val">
-              <?= ucfirst(e($row['gender'])) ?>
-              <?= $row['age'] ? ' &nbsp;&bull;&nbsp; Age: ' . (int)$row['age'] . ' yrs' : '' ?>
-            </td>
-          </tr>
-        </table>
-
-        <hr class="receipt-divider">
-
-        <!-- ── Appointment Details ── -->
-        <!-- Doctor + specialty on one line; date + time on one line -->
-        <div class="receipt-section-title">
-          <i class="fa-solid fa-user-doctor"></i> Appointment Details
-        </div>
-        <table class="info-table">
-          <tr>
-            <td class="lbl"><i class="fa-solid fa-user-doctor"></i> Doctor</td>
-            <td class="val"><?= $doctorLine ?></td>
-          </tr>
-          <tr>
-            <td class="lbl"><i class="fa-regular fa-calendar-clock"></i> Date &amp; Time</td>
-            <td class="val"><?= $dateTimeLine ?></td>
-          </tr>
-        </table>
-
-        <hr class="receipt-divider">
-
-        <!-- ── Payment ── -->
-        <!-- Fee + paid/unpaid status on one line -->
-        <div class="receipt-section-title">
-          <i class="fa-solid fa-money-bill-wave"></i> Payment
-        </div>
-        <table class="info-table">
-          <tr>
-            <td class="lbl"><i class="fa-solid fa-tag"></i> Fee</td>
-            <td class="val">
-              <?= $feeAmount ?>
-              <?php if ($isPaid): ?>
-                &nbsp;<span class="status-paid">
-                  (<i class="fa-solid fa-circle-check"></i> PAID)
-                </span>
-              <?php else: ?>
-                &nbsp;<span class="status-unpaid">
-                  (<i class="fa-solid fa-clock"></i> UNPAID)
-                </span>
-              <?php endif; ?>
-            </td>
-          </tr>
-        </table>
-
-        <?php if ($row['notes']): ?>
-          <div class="notes-box">
-            <i class="fa-solid fa-note-sticky" style="color:#0369a1;margin-right:4px;"></i>
-            <?= e($row['notes']) ?>
+        <!-- HEADER -->
+        <?php if ($logoSrc): ?>
+          <div class="logo-wrap">
+            <img class="logo-img" src="<?= $logoSrc ?>" alt="<?= e($hospitalName) ?>">
           </div>
         <?php endif; ?>
 
-        <!-- ── Receipt Footer ── -->
-        <div class="receipt-footer">
-          <p><i class="fa-solid fa-user-nurse" style="font-size:10px;margin-right:3px;"></i>Issued by: <?= $recName ?></p>
-          <p><i class="fa-solid fa-print" style="font-size:10px;margin-right:3px;"></i>Printed: <?= $printedAt ?></p>
+        <div class="hosp-name"><?= e($hospitalName) ?></div>
+
+        <?php if ($address): ?>
+          <div class="hosp-sub"><?= e($address) ?></div>
+        <?php endif; ?>
+
+        <?php if ($phone): ?>
+          <div class="hosp-sub">Tel: <?= e($phone) ?></div>
+        <?php endif; ?>
+
+        <hr class="sep-double">
+
+        <!-- TOKEN -->
+        <div class="token-box">
+          <div class="t-label">Token Number</div>
+          <div class="t-num"><?= e($tokenDisplay) ?></div>
+          <div class="t-serial">Serial No: <?= (int)$row['serial_number'] ?></div>
         </div>
 
+        <!-- PATIENT INFO -->
+        <hr class="sep-dash">
+        <div class="sec-lbl">Patient Info</div>
+
+        <table class="info-tbl">
+          <tr>
+            <td class="lbl">Name</td>
+            <td class="val"><?= e($row['name']) ?></td>
+          </tr>
+          <tr>
+            <td class="lbl">Gender</td>
+            <td class="val"><?= $genderAge ?></td>
+          </tr>
+        </table>
+
+        <!-- APPOINTMENT -->
+        <hr class="sep-dash">
+        <div class="sec-lbl">Appointment</div>
+
+        <table class="info-tbl">
+          <tr>
+            <td class="lbl">Doctor</td>
+            <td class="val">
+              Dr. <?= e($row['doctor_name']) ?><br>
+              (<?= e($row['specialization']) ?>)
+            </td>
+          </tr>
+          <tr>
+            <td class="lbl">Date/Time</td>
+            <td class="val"><?= formatDate($row['visit_date']) ?> <?= formatTime($row['visit_time']) ?></td>
+          </tr>
+        </table>
+
+        <!-- PAYMENT -->
+        <hr class="sep-dash">
+        <div class="sec-lbl">Payment</div>
+
+        <table class="info-tbl">
+          <tr>
+            <td class="lbl">Fee</td>
+            <td class="val"><?= $feeAmount ?> [<?= $payStatus ?>]</td>
+          </tr>
+          <?php if ($isPaid && !empty($row['payment_method'])): ?>
+            <tr>
+              <td class="lbl">Method</td>
+              <td class="val"><?= ucfirst(e($row['payment_method'])) ?></td>
+            </tr>
+          <?php endif; ?>
+        </table>
+
+        <!-- NOTES -->
+        <?php if (!empty($row['notes'])): ?>
+          <hr class="sep-dash">
+          <div class="sec-lbl">Notes</div>
+          <div class="notes-box"><?= e($row['notes']) ?></div>
+        <?php endif; ?>
+
+        <!-- FOOTER -->
+        <hr class="sep-solid">
+
+        <div class="rct-footer">
+          <p>By: <?= $recName ?></p>
+          <p><?= $printedAt ?></p>
+        </div>
+
+        <!-- URDU SECTION -->
         <?php if ($showUrdu): ?>
-          <!-- ── Urdu Section ── -->
-          <div class="urdu-section">
+
+          <hr class="sep-double">
+
+          <div class="urdu-wrap">
 
             <?php if ($hospitalUrdu): ?>
-              <div class="urdu-hospital"><?= e($hospitalUrdu) ?></div>
+              <div class="u-hosp"><?= e($hospitalUrdu) ?></div>
             <?php endif; ?>
+
             <?php if ($addressUrdu): ?>
-              <div class="urdu-address"><?= e($addressUrdu) ?></div>
+              <div class="u-addr"><?= e($addressUrdu) ?></div>
             <?php endif; ?>
 
-            <div class="urdu-title">پرچی / رسید</div>
+            <div class="u-title">پرچی / رسید</div>
 
-            <div class="urdu-token-box">
-              <div class="u-token-num"><?= e($tokenDisplay) ?></div>
-              <div style="font-size:12px;color:#0369a1;margin-top:2px;">
-                سیریل نمبر <?= (int) $row['serial_number'] ?>
-              </div>
+            <div class="u-token-box">
+              <div class="ut-num"><?= e($tokenDisplay) ?></div>
+              <div class="ut-serial">سیریل نمبر <?= (int)$row['serial_number'] ?></div>
             </div>
 
-            <table class="urdu-table">
+            <table class="urdu-tbl">
               <tr>
-                <td class="u-val" style="direction:ltr;text-align:right;">Dr. <?= e($row['doctor_name']) ?></td>
+                <td class="u-val" style="direction:ltr;text-align:right;">
+                  Dr. <?= e($row['doctor_name']) ?>
+                </td>
                 <td class="u-lbl">ڈاکٹر</td>
               </tr>
               <tr>
-                <td class="u-val" style="direction:ltr;text-align:right;"><?= $dateTimeLine ?></td>
-                <td class="u-lbl">تاریخ و وقت</td>
+                <td class="u-val" style="direction:ltr;text-align:right;">
+                  <?= formatDate($row['visit_date']) ?> <?= formatTime($row['visit_time']) ?>
+                </td>
+                <td class="u-lbl">تاریخ / وقت</td>
               </tr>
               <tr>
-                <td class="u-val"><?= $feeAmount ?></td>
+                <td class="u-val" style="direction:ltr;text-align:right;">
+                  <?= $feeAmount ?>
+                </td>
                 <td class="u-lbl">فیس</td>
               </tr>
               <tr>
                 <td class="u-val">
-                  <?php if ($isPaid): ?>
-                    <span class="urdu-paid">ادا شدہ &#x2714;</span>
-                  <?php else: ?>
-                    <span class="urdu-unpaid">ادا نہیں ہوا</span>
-                  <?php endif; ?>
+                  <?= $isPaid ? 'ادا شدہ' : 'ادا نہیں ہوا' ?>
                 </td>
                 <td class="u-lbl">ادائیگی</td>
               </tr>
@@ -837,10 +751,12 @@ function renderReceiptHTML(int $patientId): string
             </table>
 
           </div>
+
         <?php endif; ?>
 
-      </div><!-- /.receipt-wrapper -->
-    </div><!-- /#receipt-print-root -->
+      </div><!-- /#rct -->
+    </div><!-- /#rct-root -->
+
   </body>
 
   </html>

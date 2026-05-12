@@ -1,4 +1,5 @@
 <?php
+
 /**
  * admin/patients.php — Enhanced All Patients Module
  *
@@ -23,210 +24,602 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
 
 <!-- ── Page-level CSS ─────────────────────────────────────────────── -->
 <style>
-/* ── Status Badges ── */
-.badge-paid      { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
-.badge-unpaid    { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
-.badge-returned  { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
+    /* ── Status Badges ── */
+    .badge-paid {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+    }
 
-/* ── Payment Dropdown ── */
-.pay-dropdown-wrapper { position:relative; display:inline-block; }
+    .badge-unpaid {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
+    }
 
-#globalPayDropdown {
-    position:absolute;
-    z-index:9999;
-    background:var(--color-card);
-    border:1px solid var(--color-border);
-    border-radius:var(--radius-md);
-    box-shadow:var(--shadow-modal);
-    min-width:200px;
-    padding:6px 0;
-    display:none;
-    animation:dropFadeIn 0.15s ease;
-}
-@keyframes dropFadeIn {
-    from { opacity:0; transform:translateY(-6px); }
-    to   { opacity:1; transform:translateY(0); }
-}
+    .badge-returned {
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+    }
 
-.pay-drop-section {
-    padding:4px 10px 2px;
-    font-size:10px;
-    font-weight:700;
-    text-transform:uppercase;
-    letter-spacing:.06em;
-    color:var(--color-text-faint);
-}
-.pay-drop-item {
-    display:flex;
-    align-items:center;
-    gap:10px;
-    padding:7px 14px;
-    font-size:13px;
-    font-weight:500;
-    color:var(--color-text);
-    cursor:pointer;
-    transition:background .12s;
-    position:relative;
-}
-.pay-drop-item:hover { background:var(--color-surface); }
-.pay-drop-item .pay-drop-icon {
-    width:28px;
-    height:28px;
-    border-radius:8px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:12px;
-    flex-shrink:0;
-}
-.pay-drop-item .pay-tooltip {
-    position:absolute;
-    left:calc(100% + 8px);
-    top:50%;
-    transform:translateY(-50%);
-    background:#1e293b;
-    color:#fff;
-    font-size:11px;
-    padding:4px 8px;
-    border-radius:6px;
-    white-space:nowrap;
-    pointer-events:none;
-    opacity:0;
-    transition:opacity .15s;
-    z-index:10000;
-}
-.pay-drop-item .pay-tooltip::before {
-    content:'';
-    position:absolute;
-    left:-4px;
-    top:50%;
-    transform:translateY(-50%);
-    border:4px solid transparent;
-    border-right-color:#1e293b;
-    border-left:none;
-}
-.pay-drop-item:hover .pay-tooltip { opacity:1; }
+    /* ── Payment Dropdown ── */
+    .pay-dropdown-wrapper {
+        position: relative;
+        display: inline-block;
+    }
 
-.pay-drop-divider {
-    border:none;
-    border-top:1px solid var(--color-border);
-    margin:4px 0;
-}
+    #globalPayDropdown {
+        position: absolute;
+        z-index: 9999;
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-modal);
+        min-width: 200px;
+        padding: 6px 0;
+        display: none;
+        animation: dropFadeIn 0.15s ease;
+    }
 
-/* ── Generate Token Modal ── */
-.gt-modal-body {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:1.25rem;
-    max-height:72vh;
-}
-@media(max-width:700px) {
-    .gt-modal-body { grid-template-columns:1fr; max-height:none; }
-}
+    @keyframes dropFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-6px);
+        }
 
-.gt-doctor-grid {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:.625rem;
-    overflow-y:auto;
-    max-height:58vh;
-    padding-right:4px;
-}
-@media(max-width:500px) {
-    .gt-doctor-grid { grid-template-columns:1fr; }
-}
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
 
-.gt-doc-card {
-    background:var(--color-card);
-    border:2px solid var(--color-border);
-    border-radius:var(--radius-md);
-    padding:.75rem;
-    cursor:pointer;
-    transition:all .14s;
-    position:relative;
-}
-.gt-doc-card:hover  { border-color:var(--color-primary); background:var(--color-primary-lt); }
-.gt-doc-card.selected {
-    border-color:var(--color-primary);
-    background:var(--color-primary-lt);
-    box-shadow:0 0 0 3px rgba(3,105,161,.1);
-}
-.gt-doc-card.full { opacity:.45; cursor:not-allowed; pointer-events:none; }
-.gt-doc-name { font-size:12px; font-weight:700; color:var(--color-text); margin-bottom:2px; }
-.gt-doc-spec { font-size:11px; color:var(--color-text-muted); }
-.gt-doc-fee  { font-size:11px; font-weight:600; color:var(--color-accent); margin-top:6px; }
-.gt-doc-tok  {
-    font-family:'JetBrains Mono',monospace;
-    font-size:12px; font-weight:800;
-    color:var(--color-primary);
-    margin-top:2px;
-}
-.gt-check {
-    position:absolute; top:6px; right:6px;
-    width:18px; height:18px; border-radius:50%;
-    background:var(--color-primary); color:#fff;
-    display:none; align-items:center; justify-content:center;
-    font-size:9px;
-}
-.gt-doc-card.selected .gt-check { display:flex; }
+    .pay-drop-section {
+        padding: 4px 10px 2px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--color-text-faint);
+    }
 
-/* Token preview banner */
-.gt-token-preview {
-    background:linear-gradient(135deg,#0c4a6e,#0369a1);
-    border-radius:var(--radius-lg);
-    padding:1rem 1.25rem;
-    text-align:center;
-    margin-bottom:1rem;
-    position:relative;
-    overflow:hidden;
-}
-.gt-token-preview.inactive {
-    background:linear-gradient(135deg,#475569,#64748b);
-}
-.gt-token-preview::before {
-    content:'';
-    position:absolute;
-    width:140px; height:140px; border-radius:50%;
-    background:rgba(255,255,255,.06);
-    top:-40px; right:-40px;
-}
-.gt-tp-label { font-size:10px; font-weight:700; text-transform:uppercase;
-    letter-spacing:.1em; color:rgba(255,255,255,.65); margin-bottom:4px; }
-.gt-tp-num {
-    font-family:'JetBrains Mono',monospace;
-    font-size:1.875rem; font-weight:800; color:#fff; letter-spacing:3px; line-height:1;
-}
-.gt-tp-doc  { font-size:11px; color:rgba(255,255,255,.8); margin-top:6px; }
-.gt-tp-date { font-size:10px; color:rgba(255,255,255,.55); margin-top:3px; }
+    .pay-drop-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 14px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--color-text);
+        cursor: pointer;
+        transition: background .12s;
+        position: relative;
+    }
 
-/* Compact form inside modal */
-.gt-form-grid-2 {
-    display:grid; grid-template-columns:1fr 1fr; gap:.75rem;
-}
-@media(max-width:460px) { .gt-form-grid-2 { grid-template-columns:1fr; } }
+    .pay-drop-item:hover {
+        background: var(--color-surface);
+    }
 
-.gt-section-label {
-    font-size:10px; font-weight:700; text-transform:uppercase;
-    letter-spacing:.08em; color:var(--color-text-faint);
-    margin:12px 0 8px; padding-bottom:5px;
-    border-bottom:1px solid var(--color-border);
-    display:flex; align-items:center; gap:6px;
-}
-.gt-section-label i { color:var(--color-primary); font-size:10px; }
-.gt-section-label:first-child { margin-top:0; }
+    .pay-drop-item .pay-drop-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        flex-shrink: 0;
+    }
 
-/* Right panel scroll */
-.gt-right-panel { overflow-y:auto; max-height:58vh; padding-right:2px; }
-@media(max-width:700px) { .gt-right-panel { max-height:none; } }
+    .pay-drop-item .pay-tooltip {
+        position: absolute;
+        left: calc(100% + 8px);
+        top: 50%;
+        transform: translateY(-50%);
+        background: #1e293b;
+        color: #fff;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity .15s;
+        z-index: 10000;
+    }
 
-/* ── Responsive table ── */
-@media(max-width:900px) {
-    .col-hide-md { display:none !important; }
-}
-@media(max-width:640px) {
-    .col-hide-sm { display:none !important; }
-    .main-content { padding:.75rem; }
-}
+    .pay-drop-item .pay-tooltip::before {
+        content: '';
+        position: absolute;
+        left: -4px;
+        top: 50%;
+        transform: translateY(-50%);
+        border: 4px solid transparent;
+        border-right-color: #1e293b;
+        border-left: none;
+    }
+
+    .pay-drop-item:hover .pay-tooltip {
+        opacity: 1;
+    }
+
+    .pay-drop-divider {
+        border: none;
+        border-top: 1px solid var(--color-border);
+        margin: 4px 0;
+    }
+
+    /* ── Generate Token Modal ── */
+    .gt-modal-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.25rem;
+        max-height: 72vh;
+    }
+
+    @media(max-width:700px) {
+        .gt-modal-body {
+            grid-template-columns: 1fr;
+            max-height: none;
+        }
+    }
+
+    .gt-doctor-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: .625rem;
+        overflow-y: auto;
+        max-height: 58vh;
+        padding-right: 4px;
+    }
+
+    @media(max-width:500px) {
+        .gt-doctor-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .gt-doc-card {
+        background: var(--color-card);
+        border: 2px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: .75rem;
+        cursor: pointer;
+        transition: all .14s;
+        position: relative;
+    }
+
+    .gt-doc-card:hover {
+        border-color: var(--color-primary);
+        background: var(--color-primary-lt);
+    }
+
+    .gt-doc-card.selected {
+        border-color: var(--color-primary);
+        background: var(--color-primary-lt);
+        box-shadow: 0 0 0 3px rgba(3, 105, 161, .1);
+    }
+
+    .gt-doc-card.full {
+        opacity: .45;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    .gt-doc-name {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--color-text);
+        margin-bottom: 2px;
+    }
+
+    .gt-doc-spec {
+        font-size: 11px;
+        color: var(--color-text-muted);
+    }
+
+    .gt-doc-fee {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--color-accent);
+        margin-top: 6px;
+    }
+
+    .gt-doc-tok {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--color-primary);
+        margin-top: 2px;
+    }
+
+    .gt-check {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--color-primary);
+        color: #fff;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+    }
+
+    .gt-doc-card.selected .gt-check {
+        display: flex;
+    }
+
+    /* Token preview banner */
+    .gt-token-preview {
+        background: linear-gradient(135deg, #0c4a6e, #0369a1);
+        border-radius: var(--radius-lg);
+        padding: 1rem 1.25rem;
+        text-align: center;
+        margin-bottom: 1rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .gt-token-preview.inactive {
+        background: linear-gradient(135deg, #475569, #64748b);
+    }
+
+    .gt-token-preview::before {
+        content: '';
+        position: absolute;
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, .06);
+        top: -40px;
+        right: -40px;
+    }
+
+    .gt-tp-label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .1em;
+        color: rgba(255, 255, 255, .65);
+        margin-bottom: 4px;
+    }
+
+    .gt-tp-num {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.875rem;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: 3px;
+        line-height: 1;
+    }
+
+    .gt-tp-doc {
+        font-size: 11px;
+        color: rgba(255, 255, 255, .8);
+        margin-top: 6px;
+    }
+
+    .gt-tp-date {
+        font-size: 10px;
+        color: rgba(255, 255, 255, .55);
+        margin-top: 3px;
+    }
+
+    /* Compact form inside modal */
+    .gt-form-grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: .75rem;
+    }
+
+    @media(max-width:460px) {
+        .gt-form-grid-2 {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .gt-section-label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: var(--color-text-faint);
+        margin: 12px 0 8px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid var(--color-border);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .gt-section-label i {
+        color: var(--color-primary);
+        font-size: 10px;
+    }
+
+    .gt-section-label:first-child {
+        margin-top: 0;
+    }
+
+    /* Right panel scroll */
+    .gt-right-panel {
+        overflow-y: auto;
+        max-height: 58vh;
+        padding-right: 2px;
+    }
+
+    @media(max-width:700px) {
+        .gt-right-panel {
+            max-height: none;
+        }
+    }
+
+    /* ── Responsive table ── */
+    @media(max-width:900px) {
+        .col-hide-md {
+            display: none !important;
+        }
+    }
+
+    @media(max-width:640px) {
+        .col-hide-sm {
+            display: none !important;
+        }
+    }
+
+    /* ── Statistics Cards ── */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: .875rem;
+        margin-bottom: 1.25rem;
+    }
+
+    @media(max-width:900px) {
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media(max-width:480px) {
+        .stats-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: .625rem;
+        }
+    }
+
+    .stat-card {
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: 1rem 1.125rem;
+        display: flex;
+        align-items: flex-start;
+        gap: .875rem;
+        transition: box-shadow .15s;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stat-card::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    }
+
+    .stat-card.sc-blue::after {
+        background: var(--color-primary);
+    }
+
+    .stat-card.sc-green::after {
+        background: #059669;
+    }
+
+    .stat-card.sc-amber::after {
+        background: #d97706;
+    }
+
+    .stat-card.sc-slate::after {
+        background: #64748b;
+    }
+
+    .stat-card:hover {
+        box-shadow: var(--shadow-md);
+    }
+
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+
+    .sc-blue .stat-icon {
+        background: var(--color-primary-lt);
+        color: var(--color-primary);
+    }
+
+    .sc-green .stat-icon {
+        background: #d1fae5;
+        color: #059669;
+    }
+
+    .sc-amber .stat-icon {
+        background: #fef3c7;
+        color: #d97706;
+    }
+
+    .sc-slate .stat-icon {
+        background: #f1f5f9;
+        color: #64748b;
+    }
+
+    .stat-body {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .stat-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.375rem;
+        font-weight: 800;
+        line-height: 1.1;
+        color: var(--color-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .stat-label {
+        font-size: 11px;
+        color: var(--color-text-muted);
+        margin-top: 2px;
+        font-weight: 500;
+    }
+
+    .stat-sub {
+        font-size: 11px;
+        font-weight: 600;
+        margin-top: 5px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 7px;
+        border-radius: 20px;
+    }
+
+    .sc-blue .stat-sub {
+        background: var(--color-primary-lt);
+        color: var(--color-primary);
+    }
+
+    .sc-green .stat-sub {
+        background: #d1fae5;
+        color: #059669;
+    }
+
+    .sc-amber .stat-sub {
+        background: #fef3c7;
+        color: #d97706;
+    }
+
+    .sc-slate .stat-sub {
+        background: #f1f5f9;
+        color: #64748b;
+    }
+
+    /* Skeleton loader for stats */
+    .stat-skeleton {
+        height: 18px;
+        border-radius: 6px;
+        background: linear-gradient(90deg, var(--color-border) 25%, var(--color-surface) 50%, var(--color-border) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.4s infinite;
+    }
+
+    @keyframes shimmer {
+        to {
+            background-position: -200% 0;
+        }
+    }
+
+    /* ── Table: no forced min-width, mobile card-like rows ── */
+    .patients-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #patientsTable {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    /* Per-page + pagination row */
+    .pagination-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        flex-wrap: wrap;
+        padding: .625rem 1rem;
+        border-top: 1px solid var(--color-border);
+        font-size: 12px;
+        color: var(--color-text-muted);
+    }
+
+    .per-page-wrap {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+    }
+
+    .per-page-wrap select {
+        font-size: 12px;
+        padding: 3px 8px;
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        background: var(--color-surface);
+        color: var(--color-text);
+        cursor: pointer;
+    }
+
+    .page-btns-wrap {
+        display: flex;
+        align-items: center;
+        gap: .25rem;
+        flex-wrap: wrap;
+    }
+
+    .page-btn {
+        min-width: 28px;
+        height: 28px;
+        padding: 0 6px;
+        border: 1px solid var(--color-border);
+        border-radius: 6px;
+        background: var(--color-surface);
+        color: var(--color-text);
+        font-size: 12px;
+        cursor: pointer;
+        transition: all .12s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .page-btn:hover:not(:disabled) {
+        background: var(--color-primary-lt);
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+
+    .page-btn.active {
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+        color: #fff;
+        font-weight: 700;
+    }
+
+    .page-btn:disabled {
+        opacity: .4;
+        cursor: not-allowed;
+    }
+
+    .page-btn.dots {
+        cursor: default;
+        border-color: transparent;
+        background: transparent;
+    }
 </style>
 
 <!-- ── Page Header ─────────────────────────────────────────────────── -->
@@ -237,8 +630,8 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
             All Patients
         </h2>
         <span class="text-xs px-2 py-0.5 rounded-full font-bold"
-              style="background:var(--color-primary-lt);color:var(--color-primary);"
-              id="totalCount">Loading…</span>
+            style="background:var(--color-primary-lt);color:var(--color-primary);"
+            id="totalCount">Loading…</span>
     </div>
     <button class="btn btn-primary btn-sm" id="openGenTokenBtn">
         <i class="fa-solid fa-ticket"></i>
@@ -254,10 +647,10 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
             <label class="form-label">Search</label>
             <div style="position:relative;">
                 <i class="fa-solid fa-magnifying-glass"
-                   style="position:absolute;left:11px;top:50%;transform:translateY(-50%);
+                    style="position:absolute;left:11px;top:50%;transform:translateY(-50%);
                           color:var(--color-text-faint);font-size:12px;"></i>
                 <input type="text" id="searchInput" class="form-input"
-                       placeholder="Name, phone, doctor…" style="padding-left:33px;">
+                    placeholder="Name, phone, doctor…" style="padding-left:33px;">
             </div>
         </div>
 
@@ -276,7 +669,7 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
             <select id="doctorFilter" class="form-select">
                 <option value="">All Doctors</option>
                 <?php foreach ($doctors as $doc): ?>
-                <option value="<?= (int)$doc['id'] ?>">Dr. <?= e($doc['name']) ?></option>
+                    <option value="<?= (int)$doc['id'] ?>">Dr. <?= e($doc['name']) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -297,20 +690,73 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
     </div>
 </div>
 
+<!-- ── Statistics Cards ────────────────────────────────────────────── -->
+<div class="stats-grid" id="statsGrid">
+    <!-- Skeleton until first load -->
+    <div class="stat-card sc-blue">
+        <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+        <div class="stat-body">
+            <div class="stat-value" id="statTotal">
+                <div class="stat-skeleton" style="width:60px;"></div>
+            </div>
+            <div class="stat-label">Total Patients</div>
+        </div>
+    </div>
+    <div class="stat-card sc-green">
+        <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="stat-body">
+            <div class="stat-value" id="statRevenue">
+                <div class="stat-skeleton" style="width:80px;"></div>
+            </div>
+            <div class="stat-label">Revenue Collected</div>
+            <div class="stat-sub sc-green" id="statPaidCount" style="display:none;">
+                <i class="fa-solid fa-ticket" style="font-size:9px;"></i>
+                <span></span>
+            </div>
+        </div>
+    </div>
+    <div class="stat-card sc-amber">
+        <div class="stat-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+        <div class="stat-body">
+            <div class="stat-value" id="statPending">
+                <div class="stat-skeleton" style="width:80px;"></div>
+            </div>
+            <div class="stat-label">Pending Amount</div>
+            <div class="stat-sub sc-amber" id="statUnpaidCount" style="display:none;">
+                <i class="fa-solid fa-ticket" style="font-size:9px;"></i>
+                <span></span>
+            </div>
+        </div>
+    </div>
+    <div class="stat-card sc-slate">
+        <div class="stat-icon"><i class="fa-solid fa-person-circle-xmark"></i></div>
+        <div class="stat-body">
+            <div class="stat-value" id="statReturned">
+                <div class="stat-skeleton" style="width:40px;"></div>
+            </div>
+            <div class="stat-label">Returned</div>
+            <div class="stat-sub sc-slate" id="statReturnedSub" style="display:none;">
+                <i class="fa-solid fa-arrow-rotate-left" style="font-size:9px;"></i>
+                <span></span>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ── Patients Table ──────────────────────────────────────────────── -->
 <div class="card" style="padding:0;overflow:hidden;">
-    <div class="table-wrapper" style="overflow-x:auto;">
-        <table class="data-table" id="patientsTable" style="min-width:700px;">
+    <div class="patients-table-wrap">
+        <table class="data-table" id="patientsTable">
             <thead>
                 <tr>
-                    <th style="width:90px;">Token</th>
+                    <th style="width:88px;">Token</th>
                     <th>Patient</th>
                     <th class="col-hide-md">Doctor</th>
-                    <th class="col-hide-sm">Date</th>
-                    <th style="width:100px;">Status</th>
+                    <th class="col-hide-md">Date</th>
+                    <th style="width:115px;">Status</th>
                     <th style="width:90px;" class="col-hide-sm">Amount</th>
-                    <th style="width:80px;" class="col-hide-md">By</th>
-                    <th style="width:120px;text-align:right;">Actions</th>
+                    <th style="width:75px;" class="col-hide-md">By</th>
+                    <th style="width:148px;text-align:right;">Actions</th>
                 </tr>
             </thead>
             <tbody id="patientsBody">
@@ -323,13 +769,18 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
         </table>
     </div>
 
-    <!-- Pagination -->
-    <div id="paginationBar"
-         style="padding:.625rem 1.25rem;border-top:1px solid var(--color-border);
-                display:flex;align-items:center;justify-content:space-between;
-                gap:.75rem;flex-wrap:wrap;font-size:12px;color:var(--color-text-muted);">
-        <span id="pageInfo">—</span>
-        <div class="flex gap-1 flex-wrap" id="pageBtns"></div>
+    <!-- Pagination row -->
+    <div class="pagination-row" id="paginationBar">
+        <div class="per-page-wrap">
+            <span>Rows:</span>
+            <select id="perPageSelect">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+            </select>
+            <span id="pageInfo" style="color:var(--color-text-muted);">—</span>
+        </div>
+        <div class="page-btns-wrap" id="pageBtns"></div>
     </div>
 </div>
 
@@ -462,7 +913,7 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
                         <label class="form-label">Doctor <span style="color:var(--color-danger);">*</span></label>
                         <select id="epDoctor" class="form-select">
                             <?php foreach ($doctors as $doc): ?>
-                            <option value="<?= (int)$doc['id'] ?>">Dr. <?= e($doc['name']) ?> — <?= e($doc['specialization']) ?></option>
+                                <option value="<?= (int)$doc['id'] ?>">Dr. <?= e($doc['name']) ?> — <?= e($doc['specialization']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -506,7 +957,7 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
                 <div class="mb-3">
                     <label class="form-label">Notes</label>
                     <textarea id="epNotes" class="form-input" rows="2"
-                              placeholder="Any additional notes…" style="resize:vertical;"></textarea>
+                        placeholder="Any additional notes…" style="resize:vertical;"></textarea>
                     <p class="text-xs mt-1" style="color:var(--color-text-muted);">
                         <i class="fa-solid fa-triangle-exclamation" style="color:var(--color-warning);font-size:10px;"></i>
                         If patient is marked Returned, that status is preserved in notes automatically.
@@ -521,12 +972,12 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
                     <div style="display:flex;gap:1.25rem;">
                         <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:13px;">
                             <input type="radio" name="epPayStatus" value="unpaid" id="epUnpaid"
-                                   style="accent-color:var(--color-warning);">
+                                style="accent-color:var(--color-warning);">
                             <span>Unpaid</span>
                         </label>
                         <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:13px;">
                             <input type="radio" name="epPayStatus" value="paid" id="epPaid"
-                                   style="accent-color:var(--color-accent);">
+                                style="accent-color:var(--color-accent);">
                             <span>Paid</span>
                         </label>
                     </div>
@@ -608,7 +1059,7 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
                     </div>
                     <div class="mb-3">
                         <input type="datetime-local" id="gtDatetime" class="form-input"
-                               style="width:100%;">
+                            style="width:100%;">
                         <p class="text-xs mt-1" style="color:var(--color-text-muted);">
                             <i class="fa-solid fa-circle-info" style="font-size:10px;"></i>
                             You can schedule future appointments.
@@ -649,7 +1100,7 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
                     <div class="mb-3">
                         <label class="form-label">Notes</label>
                         <textarea id="gtNotes" class="form-input" rows="2"
-                                  placeholder="Any additional notes…" style="resize:vertical;"></textarea>
+                            placeholder="Any additional notes…" style="resize:vertical;"></textarea>
                     </div>
 
                     <!-- Payment -->
@@ -660,12 +1111,12 @@ $currencySymbol = getSetting('currency_symbol', 'Rs.');
                         <div style="display:flex;gap:1rem;">
                             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:13px;">
                                 <input type="radio" name="gtPayStatus" value="unpaid" id="gtUnpaid"
-                                       checked style="accent-color:var(--color-warning);">
+                                    checked style="accent-color:var(--color-warning);">
                                 <span>Unpaid</span>
                             </label>
                             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:13px;">
                                 <input type="radio" name="gtPayStatus" value="paid" id="gtPaid"
-                                       style="accent-color:var(--color-accent);">
+                                    style="accent-color:var(--color-accent);">
                                 <span>Paid</span>
                             </label>
                         </div>
@@ -732,6 +1183,8 @@ $extraJs = <<<'JS'
     // ════════════════════════════════════════════════════════════
     function loadPatients(page = 1) {
         currentPage = page;
+        const perPage = parseInt(document.getElementById('perPageSelect').value, 10) || 50;
+
         const params = new URLSearchParams({
             action:        'getPatients',
             search:         document.getElementById('searchInput').value.trim(),
@@ -740,7 +1193,13 @@ $extraJs = <<<'JS'
             doctor_id:      document.getElementById('doctorFilter').value,
             status_filter:  document.getElementById('statusFilter').value,
             page,
-            per_page: 50,
+            per_page: perPage,
+        });
+
+        // Show skeleton on stats
+        ['statTotal','statRevenue','statPending','statReturned'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '<div class="stat-skeleton" style="width:60px;margin-top:2px;"></div>';
         });
 
         fetch(`${AJAX_URL}?${params}`)
@@ -749,8 +1208,9 @@ $extraJs = <<<'JS'
                 if (!res.success) { showToast(res.message, 'error'); return; }
                 const d = res.data;
                 document.getElementById('totalCount').textContent = `${d.total} patient(s)`;
+                renderStats(d.stats);
                 renderTable(d.patients);
-                renderPagination(d.page, d.total_pages, d.total, d.per_page);
+                renderPagination(d.page, d.total_pages, d.total, perPage);
             })
             .catch(() => showToast('Failed to load patients.', 'error'));
     }
@@ -871,25 +1331,68 @@ $extraJs = <<<'JS'
             </tr>`).join('');
     }
 
+    // ── Render stats cards ─────────────────────────────────────
+    function renderStats(s) {
+        if (!s) return;
+        document.getElementById('statTotal').textContent   = s.total;
+        document.getElementById('statRevenue').textContent = s.revenue;
+        document.getElementById('statPending').textContent = s.pending;
+        document.getElementById('statReturned').textContent= s.returned;
+
+        const paidEl = document.getElementById('statPaidCount');
+        paidEl.style.display = 'inline-flex';
+        paidEl.querySelector('span').textContent = s.paid + ' paid';
+
+        const unpaidEl = document.getElementById('statUnpaidCount');
+        unpaidEl.style.display = 'inline-flex';
+        unpaidEl.querySelector('span').textContent = s.unpaid + ' unpaid';
+
+        const retEl = document.getElementById('statReturnedSub');
+        retEl.style.display = s.returned > 0 ? 'inline-flex' : 'none';
+        retEl.querySelector('span').textContent = 'no consultation';
+    }
+
     function renderPagination(page, totalPages, total, perPage) {
-        const start  = (page - 1) * perPage + 1;
-        const end    = Math.min(page * perPage, total);
+        const start = total ? (page - 1) * perPage + 1 : 0;
+        const end   = Math.min(page * perPage, total);
         document.getElementById('pageInfo').textContent =
-            total ? `Showing ${start}–${end} of ${total}` : 'No results';
+            total ? `${start}–${end} of ${total}` : 'No results';
 
         const btns = document.getElementById('pageBtns');
-        if (totalPages <= 1) { btns.innerHTML = ''; return; }
+        btns.innerHTML = '';
+        if (totalPages <= 1) return;
 
-        let html = `<button class="btn btn-ghost btn-sm" ${page<=1?'disabled':''} onclick="loadPatients(${page-1})">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>`;
-        for (let pg = Math.max(1, page-2); pg <= Math.min(totalPages, page+2); pg++) {
-            html += `<button class="btn btn-sm ${pg===page?'btn-primary':'btn-ghost'}" onclick="loadPatients(${pg})">${pg}</button>`;
+        function makeBtn(label, pg, isActive, isDots, disabled) {
+            const b = document.createElement('button');
+            b.className = 'page-btn' + (isActive ? ' active' : '') + (isDots ? ' dots' : '');
+            b.innerHTML = label;
+            b.disabled  = disabled || isDots;
+            if (!isDots && !disabled) b.onclick = () => loadPatients(pg);
+            return b;
         }
-        html += `<button class="btn btn-ghost btn-sm" ${page>=totalPages?'disabled':''} onclick="loadPatients(${page+1})">
-                     <i class="fa-solid fa-chevron-right"></i>
-                 </button>`;
-        btns.innerHTML = html;
+
+        // Prev
+        btns.appendChild(makeBtn('<i class="fa-solid fa-chevron-left"></i>', page - 1, false, false, page <= 1));
+
+        // First page
+        if (page > 3) {
+            btns.appendChild(makeBtn('1', 1, false, false, false));
+            if (page > 4) btns.appendChild(makeBtn('…', null, false, true, true));
+        }
+
+        // Window around current page
+        for (let p = Math.max(1, page - 2); p <= Math.min(totalPages, page + 2); p++) {
+            btns.appendChild(makeBtn(p, p, p === page, false, false));
+        }
+
+        // Last page
+        if (page < totalPages - 2) {
+            if (page < totalPages - 3) btns.appendChild(makeBtn('…', null, false, true, true));
+            btns.appendChild(makeBtn(totalPages, totalPages, false, false, false));
+        }
+
+        // Next
+        btns.appendChild(makeBtn('<i class="fa-solid fa-chevron-right"></i>', page + 1, false, false, page >= totalPages));
     }
 
     window.loadPatients = loadPatients;
@@ -1476,6 +1979,7 @@ $extraJs = <<<'JS'
     document.getElementById('dateTo').addEventListener('change',     () => loadPatients(1));
     document.getElementById('doctorFilter').addEventListener('change', () => loadPatients(1));
     document.getElementById('statusFilter').addEventListener('change', () => loadPatients(1));
+    document.getElementById('perPageSelect').addEventListener('change', () => loadPatients(1));
 
     document.getElementById('clearFiltersBtn').addEventListener('click', () => {
         document.getElementById('searchInput').value   = '';
