@@ -1,0 +1,31 @@
+# TokenMed — .gitignore
+
+# ── Credentials (NEVER commit) ─────────────────────────────
+config.php
+*.env
+.env*
+
+# ── Logs ──────────────────────────────────────────────────
+logs/*.log
+*.log
+
+# ── User uploads ──────────────────────────────────────────
+assets/uploads/profiles/*
+!assets/uploads/profiles/.gitkeep
+
+# ── SQL dumps with real data ──────────────────────────────
+*.sql
+!schema.sql
+!seed.sql
+
+# ── OS / IDE ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ── Composer / npm (if added later) ───────────────────────
+vendor/
+node_modules/
